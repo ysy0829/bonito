@@ -96,7 +96,7 @@ def load_script(directory, name="dataset", suffix=".py", **kwargs):
     return loader.train_loader_kwargs(**kwargs), loader.valid_loader_kwargs(**kwargs)
 
 
-def load_numpy(limit, directory, valid_chunks=None):
+def load_numpy(limit, directory, valid_chunks):
     """
     Returns training and validation DataLoaders for data in directory.
     """
@@ -107,10 +107,7 @@ def load_numpy(limit, directory, valid_chunks=None):
         )
     else:
         print("[validation set not found: splitting training set]")
-        if valid_chunks is None:
-            split = np.floor(len(train_data[0]) * 0.97).astype(np.int32)
-        else:
-            split = max(0, len(train_data[0]) - valid_chunks)
+        split = len(train_data[0]) - valid_chunks
         valid_data = [x[split:] for x in train_data]
         train_data = [x[:split] for x in train_data]
 
