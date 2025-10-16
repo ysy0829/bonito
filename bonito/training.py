@@ -105,7 +105,7 @@ class Trainer:
         self.restore_optim = restore_optim
         self.save_optim_every = save_optim_every
         self.grad_accum_split = grad_accum_split
-        self.scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+        self.scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
         self.optimizer = None
         if quantile_grad_clip:
             self.clip_grad = ClipGrad()
