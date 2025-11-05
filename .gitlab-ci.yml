@@ -3,13 +3,13 @@
     - docker
     - linux_x86
   except:
-    - tags  # Don't run CI for release-tags
+    - tags  # Don't run CI for release‐tags
   script:
     - python3 -m venv venv
     - source venv/bin/activate
     - pip install uv
-    - uv pip install -e .[cu118] --extra-index-url https://download.pytorch.org/whl/cu118
-    - bonito --version  # Minimal test that bonito has been built correctly
+    - uv pip install -e .[cu${CUDA_VERSION}] --extra-index-url https://download.pytorch.org/whl/cu${CUDA_VERSION}
+    - bonito --version  # minimal sanity check
     - python -m unittest discover
 
 build_bonito:
@@ -17,7 +17,8 @@ build_bonito:
   image: ${CI_REGISTRY}/traque/ont-docker-base/ont-base-python:${PYTHON_VERSION}
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+      - CUDA_VERSION: ["128", "130"]
+        PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
   <<: *build_template
 
 sre-test:
