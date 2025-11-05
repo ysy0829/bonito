@@ -10,6 +10,7 @@ from itertools import islice
 from time import perf_counter
 from collections import OrderedDict
 from datetime import datetime
+from pathlib import Path
 
 from bonito.schedule import linear_warmup_cosine_decay
 from bonito.util import accuracy, decode_ref, permute, match_names, tqdm_environ, load_object
@@ -18,55 +19,48 @@ import bonito
 import torch
 import numpy as np
 from tqdm import tqdm
-import torch.cuda.amp as amp
+import torch.amp as amp
 
 
 def load_state(dirname, device, model, optim=None):
     """
     Load a model state dict from disk
     """
+    dirname = Path(dirname)
     model.to(device)
     if hasattr(model, "module"):
         model = model.module
 
-    weight_no = optim_no = None
-
-    optim_files = glob(os.path.join(dirname, "optim_*.tar"))
-    optim_nos = {int(re.sub(".*_([0-9]+).tar", "\\1", w)) for w in optim_files}
-
-    weight_files = glob(os.path.join(dirname, "weights_*.tar"))
-    weight_nos = {int(re.sub(".*_([0-9]+).tar", "\\1", w)) for w in weight_files}
+    to_load = [("weights", model)]
+    weight_files = dirname.glob("weights_*.tar")
+    weight_nos = {int(w.stem.split("_")[-1]) for w in weight_files}
 
     if optim is not None:
-        weight_no = optim_no = max(optim_nos & weight_nos, default=None)
+        to_load.append(("optim", optim))
+        optim_files = dirname.glob("optim_*.tar")
+        optim_nos = {int(w.stem.split("_")[-1]) for w in optim_files}
+        weight_no = max(optim_nos & weight_nos, default=None)
     else:
         weight_no = max(weight_nos, default=None)
 
-    to_load = []
-    if weight_no:
-        to_load.append(("weights", model))
-    if optim_no:
-        to_load.append(("optim", optim))
+    if weight_no is None:
+        return 0 
 
-    if to_load:
-        print("[picking up %s state from epoch %s]" % (', '.join([n for n, _ in to_load]), weight_no))
-        for name, obj in to_load:
-            state_dict = torch.load(
-                os.path.join(dirname, '%s_%s.tar' % (name, weight_no)), map_location=device
-            )
-            if name == "weights":
-                state_dict = {k2: state_dict[k1] for k1, k2 in match_names(state_dict, obj).items()}
-                new_state_dict = OrderedDict()
-                for k, v in state_dict.items():
-                    name = k.replace('module.', '')
-                    new_state_dict[name] = v
-                state_dict = new_state_dict
-            obj.load_state_dict(state_dict)
-        epoch = weight_no
-    else:
-        epoch = 0
+    for name, obj in to_load:
+        print(f"[loading state] - {name}_{weight_no}.tar")
+        state_dict = torch.load(
+            dirname / f"{name}_{weight_no}.tar", 
+            map_location=device, 
+            weights_only=False,
+        )        
+        if name == "weights":
+            state_dict = {
+                k2.replace('module.', ''): state_dict[k1] 
+                for k1, k2 in match_names(state_dict, obj).items()
+            }
+        obj.load_state_dict(state_dict)
 
-    return epoch
+    return weight_no
 
 
 class ClipGrad:
@@ -105,7 +99,7 @@ class Trainer:
         self.restore_optim = restore_optim
         self.save_optim_every = save_optim_every
         self.grad_accum_split = grad_accum_split
-        self.scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
         self.optimizer = None
         if quantile_grad_clip:
             self.clip_grad = ClipGrad()
@@ -118,26 +112,26 @@ class Trainer:
 
     def train_one_step(self, batch):
         self.optimizer.zero_grad()
-
         losses = None
-        with amp.autocast(enabled=self.use_amp):
-            for batch_ in zip(
-                *map(lambda t: t.chunk(self.grad_accum_split, dim=0), batch)
-            ):
-                data_, targets_, lengths_, *args = (x.to(self.device) for x in batch_)
 
+        for batch_ in zip(
+            *map(lambda t: t.chunk(self.grad_accum_split, dim=0), batch)
+        ):
+            data_, targets_, lengths_, *args = (x.to(self.device) for x in batch_)
+
+            with amp.autocast("cuda", enabled=self.use_amp):
                 scores_ = self.model(data_, *args)
                 losses_ = self.criterion(scores_, targets_, lengths_)
 
-                if not isinstance(losses_, dict): losses_ = {'loss': losses_}
+            if not isinstance(losses_, dict): losses_ = {'loss': losses_}
 
-                total_loss = losses_.get('total_loss', losses_['loss']) / self.grad_accum_split
-                self.scaler.scale(total_loss).backward()
+            total_loss = losses_.get('total_loss', losses_['loss']) / self.grad_accum_split
+            self.scaler.scale(total_loss).backward()
 
-                losses = {
-                    k: ((v.item() / self.grad_accum_split) if losses is None else (v.item() / self.grad_accum_split) + losses[k])
-                    for k, v in losses_.items()
-                }
+            losses = {
+                k: ((v.item() / self.grad_accum_split) if losses is None else (v.item() / self.grad_accum_split) + losses[k])
+                for k, v in losses_.items()
+            }
 
         scale = self.scaler.get_scale()
         self.scaler.unscale_(self.optimizer)
@@ -190,7 +184,7 @@ class Trainer:
 
     def validate_one_step(self, batch):
         data, targets, lengths, *args = batch
-        with amp.autocast(enabled=self.use_amp):
+        with amp.autocast("cuda", enabled=self.use_amp):
             scores = self.model(data.to(self.device), *(x.to(self.device) for x in args))
             losses = self.criterion(scores, targets.to(self.device), lengths.to(self.device))
         losses = {k: v.item() for k, v in losses.items()} if isinstance(losses, dict) else losses.item()

@@ -50,6 +50,11 @@ def main(args):
     else:
         model = load_symbol(config, 'Model')(config)
 
+    try:
+        model = torch.compile(model)
+    except RuntimeError as e:
+        print(f"[warning] Torch model failed to compile, performance may be degraded. {e}")
+
     print("[loading data]")
     data = DataSettings(
         training_data=args.directory,

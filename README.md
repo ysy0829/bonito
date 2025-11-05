@@ -6,8 +6,9 @@
 [![py311](https://img.shields.io/badge/python-3.11-brightgreen.svg)](https://img.shields.io/badge/python-3.11-brightgreen.svg)
 [![py312](https://img.shields.io/badge/python-3.12-brightgreen.svg)](https://img.shields.io/badge/python-3.12-brightgreen.svg)
 [![py313](https://img.shields.io/badge/python-3.13-brightgreen.svg)](https://img.shields.io/badge/python-3.13-brightgreen.svg)
-[![cu118](https://img.shields.io/badge/cuda-11.8-blue.svg)](https://img.shields.io/badge/cuda-11.8-blue.svg)
-[![cu124](https://img.shields.io/badge/cuda-12.4-blue.svg)](https://img.shields.io/badge/cuda-12.4-blue.svg)
+[![py314](https://img.shields.io/badge/python-3.14-brightgreen.svg)](https://img.shields.io/badge/python-3.14-brightgreen.svg)
+[![cu128](https://img.shields.io/badge/cuda-11.8-blue.svg)](https://img.shields.io/badge/cuda-12.8-blue.svg)
+[![cu130](https://img.shields.io/badge/cuda-12.8-blue.svg)](https://img.shields.io/badge/cuda-13.0-blue.svg)
 
 Bonito is an open source research basecaller for Oxford Nanopore reads.
 
@@ -32,15 +33,6 @@ $ bonito download --models --show  # show all available models
 $ bonito download --models         # download all available models
 ```
 
-## Transformer Models
-
-The `bonito.transformer` package requires
-[flash-attn](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
-
-This must be manually installed as the `flash-attn` packaging system prevents it from being listed as a normal dependency.
-
-Setting `CUDA_HOME` to the relevant library directory will help avoid CUDA version mismatches between packages.
-
 ## Modified Bases
 
 For modified-base calling with ont-supported mods please use [dorado](https://github.com/nanoporetech/dorado)
@@ -58,10 +50,10 @@ $ cd bonito
 $ python3 -m venv venv3
 $ source venv3/bin/activate
 (venv3) $ pip install --upgrade pip
-(venv3) $ pip install -e .[cu118] --extra-index-url https://download.pytorch.org/whl/cu118
+(venv3) $ pip install -e .[cu128] --extra-index-url https://download.pytorch.org/whl/cu128
 ```
 
-The `ont-bonito[cu118]` and `ont-bonito[cu121]` optional dependencies can be used, along
+The `ont-bonito[cu128]` and `ont-bonito[cu130]` optional dependencies can be used, along
 with the corresponding `--extra-index-url`, to ensure the PyTorch package matches the
 local CUDA setup.
 
