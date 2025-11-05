@@ -268,7 +268,7 @@ def set_config_defaults(config, chunksize=None, batchsize=None, overlap=None, qu
     return config
 
 
-def load_model(dirname, device, weights=None, half=True, chunksize=None, batchsize=None, overlap=None, quantize=False, use_koi=False):
+def load_model(dirname, device, weights=None, half=True, chunksize=None, batchsize=None, overlap=None, quantize=False, use_koi=False, compile=True):
     """
     Load a model config and weights off disk from `dirname`.
     """
@@ -277,10 +277,10 @@ def load_model(dirname, device, weights=None, half=True, chunksize=None, batchsi
     weights = get_last_checkpoint(dirname) if weights is None else os.path.join(dirname, 'weights_%s.tar' % weights)
     config = toml.load(os.path.join(dirname, 'config.toml'))
     config = set_config_defaults(config, chunksize, batchsize, overlap, quantize)
-    return _load_model(weights, config, device, half, use_koi)
+    return _load_model(weights, config, device, half, use_koi, compile)
 
 
-def _load_model(model_file, config, device, half=True, use_koi=False):
+def _load_model(model_file, config, device, half=True, use_koi=False, compile=True):
     device = torch.device(device)
     Model = load_symbol(config, "Model")
     model = Model(config)
@@ -308,7 +308,15 @@ def _load_model(model_file, config, device, half=True, use_koi=False):
         model = model.half()
     model.eval()
     model.to(device)
+
+    if compile:
+        try:
+            model = torch.compile(model)
+        except RuntimeError as e:
+            print(f"[warning] Torch model failed to compile, performance may be degraded. {e}")
+
     return model
+
 
 def parasail_to_sam(result, seq):
     """

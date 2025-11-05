@@ -5,9 +5,12 @@ Bonito nn modules.
 from collections import OrderedDict
 
 import torch
+import torch.nn.functional as F
+
 from torch.nn import Module
 from torch.nn.init import orthogonal_
 from torch.nn.utils.fusion import fuse_conv_bn_eval
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 
 
 layers = {}
@@ -21,6 +24,7 @@ def register(layer):
 
 register(torch.nn.ReLU)
 register(torch.nn.Tanh)
+register(torch.nn.RMSNorm)
 
 
 @register
@@ -169,6 +173,129 @@ class LinearUpsample(Module):
             "scale_factor": self.scale_factor,
             "batch_first": self.batch_first
         }
+
+
+@register
+class SwiGLU(Module):
+
+    def __init__(self, in_features, hidden_features, bias=False):
+        super().__init__()
+        self.fc1 = torch.nn.Linear(in_features, hidden_features * 2, bias=bias)
+        self.fc2 = torch.nn.Linear(hidden_features, in_features, bias=bias)
+
+    def forward(self, x):
+        y = self.fc1(x)
+        data, gate = y.chunk(2, dim=-1)
+        return self.fc2(F.silu(gate) * data)
+
+
+@register
+class RotaryEmbedding(Module):
+
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq.detach(), persistent=False)
+
+    def rotate_half(self, x):
+        x1, x2 = x.chunk(2, dim=-1)
+        return torch.cat((-x2, x1), dim=-1)
+
+    def forward(self, qkv):
+        N, T, _, H, D = qkv.shape
+        pos = torch.arange(T, device=qkv.device, dtype=qkv.dtype)
+        freqs = torch.einsum("i,j->ij", pos, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos()[None, :, None, None, :]
+        sin = emb.sin()[None, :, None, None, :]
+        q, k, v = torch.chunk(qkv, 3, dim=2)
+        q = q * cos + self.rotate_half(q) * sin
+        k = k * cos + self.rotate_half(k) * sin
+        return torch.cat((q, k, v), dim=2)
+
+
+@register
+class MultiHeadAttention(Module):
+
+    def __init__(self, d_model, nhead, qkv_bias=False, out_bias=True, rotary_dim=None, attn_window=None):
+        super().__init__()
+        assert d_model % nhead == 0, "d_model must be divisible by nhead"
+
+        self.d_model = d_model
+        self.nhead = nhead
+        self.head_dim = d_model // nhead
+        self.rotary_dim = self.head_dim if rotary_dim is None else rotary_dim
+
+        self.Wqkv = torch.nn.Linear(d_model, 3 * d_model, bias=qkv_bias)
+        self.out_proj = torch.nn.Linear(d_model, d_model, bias=out_bias)
+
+        self.rotary_emb = RotaryEmbedding(self.rotary_dim)
+        self.attn_window = (-1, -1) if attn_window is None else tuple(attn_window)
+        self.mask_mod = self.mask_mod_factory()
+
+    def mask_mod_factory(self):
+        def mask_mod(b, h, q_idx, kv_idx):
+            return (kv_idx >= q_idx - self.attn_window[0]) & (kv_idx <= q_idx + self.attn_window[1])
+        return mask_mod
+
+    def attn_func(self, qkv):
+        N, T, _, H, D = qkv.shape
+        q, k, v = qkv.permute(0, 2, 3, 1, 4).unbind(dim=1)
+        block_mask = create_block_mask(self.mask_mod, N, H, T, T, device=q.device)
+        attn_out = flex_attention(q, k, v, block_mask=block_mask)
+        return attn_out.permute(0, 2, 1, 3)
+
+    def forward(self, x):
+        N, T, _ = x.shape
+        qkv = self.Wqkv(x).view(N, T, 3, self.nhead, self.head_dim)
+        qkv = self.rotary_emb(qkv)
+        attn_output = self.attn_func(qkv).reshape(N, T, self.d_model)
+        out = self.out_proj(attn_output)
+        return out
+
+
+@register
+class TransformerEncoderLayer(Module):
+    def __init__(self, d_model, nhead, dim_feedforward, deepnorm_alpha, deepnorm_beta, attn_window=None):
+        super().__init__()
+        self.kwargs = {
+            "d_model": d_model,
+            "nhead": nhead,
+            "dim_feedforward": dim_feedforward,
+            "deepnorm_alpha": deepnorm_alpha,
+            "deepnorm_beta": deepnorm_beta,
+            "attn_window": attn_window
+        }
+        self.self_attn = MultiHeadAttention(d_model=d_model, nhead=nhead, attn_window=attn_window)
+        self.ff = SwiGLU(d_model, hidden_features=dim_feedforward)
+        self.norm1 = torch.nn.RMSNorm(d_model)
+        self.norm2 = torch.nn.RMSNorm(d_model)
+        self.register_buffer("deepnorm_alpha", torch.tensor(deepnorm_alpha))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        db = self.kwargs["deepnorm_beta"]
+        d_model = self.kwargs["d_model"]
+        torch.nn.init.xavier_normal_(self.ff.fc1.weight, gain=db)
+        torch.nn.init.xavier_normal_(self.ff.fc2.weight, gain=db)
+        torch.nn.init.xavier_normal_(self.self_attn.out_proj.weight, gain=db)
+        torch.nn.init.xavier_normal_(self.self_attn.Wqkv.weight[2*d_model:], gain=db)
+        torch.nn.init.xavier_normal_(self.self_attn.Wqkv.weight[:2*d_model], gain=1)
+
+    def forward(self, x):
+        attention = self.self_attn(x)
+        residual = x * self.deepnorm_alpha
+        x = self.norm1(attention + residual)
+        y = self.ff(x)
+        residual = x * self.deepnorm_alpha
+        x = self.norm2(y + residual)
+        return x
+
+    def to_dict(self, include_weights=False):
+        if include_weights:
+            raise NotImplementedError
+        return self.kwargs
 
 
 @register

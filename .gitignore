@@ -2,7 +2,7 @@
 *~
 .venv/
 build/
-venv3*/
+venv*/
 *.lprof
 *.egg-info/
 bonito/data/*
