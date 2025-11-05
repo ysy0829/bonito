@@ -63,7 +63,7 @@ local CUDA setup.
  - `bonito train` - train a bonito model.
  - `bonito evaluate` - evaluate a model performance.
  - `bonito download` - download pretrained models and training datasets.
- - `bonito basecaller` - basecaller *(`.fast5` -> `.bam`)*.
+ - `bonito basecaller` - basecaller *(`.pod5` -> `.bam`)*.
 
 ### References
 

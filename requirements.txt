@@ -15,5 +15,4 @@ wheel
 # specific requirements
 torch~=2.9
 # ont requirements
-ont-fast5-api
 ont-koi==0.6.5

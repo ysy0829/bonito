@@ -57,7 +57,7 @@ basecaller training with `bonito train ... --directory {basecaller_output_dir}`
 
 #### Understanding the data format
 
-- `chunks.npy` is a numpy-array of shape `num_chunks * chunksize` where each row is a fixed size 'slice' of the raw signal data from the input pod5/fast5. 
+- `chunks.npy` is a numpy-array of shape `num_chunks * chunksize` where each row is a fixed size 'slice' of the raw signal data from the input pod5. 
 - `references.npy` is a numpy array of shape `num_chunks * max_ref_len` where each row contains a 'slice' of the reference-sequence which the `chunk` should align to. Bases are labelled as `A=1, C=2, G=3, T=4`. Since the number of reference bases will vary between chunks the reference array is zero-padded and the width of the array is the longest reference sequence in the sample
 - `reference_lengths.npy` is a numpy-array of shape `num_chunks`. This is a helper array that indicates the start-index of the zero-padding in `references.npy`
 
