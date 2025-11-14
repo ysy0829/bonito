@@ -1,14 +1,13 @@
 # Bonito
 
 [![PyPI version](https://badge.fury.io/py/ont-bonito.svg)](https://badge.fury.io/py/ont-bonito)
-[![py39](https://img.shields.io/badge/python-3.9-brightgreen.svg)](https://img.shields.io/badge/python-3.9-brightgreen.svg)
 [![py310](https://img.shields.io/badge/python-3.10-brightgreen.svg)](https://img.shields.io/badge/python-3.10-brightgreen.svg)
 [![py311](https://img.shields.io/badge/python-3.11-brightgreen.svg)](https://img.shields.io/badge/python-3.11-brightgreen.svg)
 [![py312](https://img.shields.io/badge/python-3.12-brightgreen.svg)](https://img.shields.io/badge/python-3.12-brightgreen.svg)
 [![py313](https://img.shields.io/badge/python-3.13-brightgreen.svg)](https://img.shields.io/badge/python-3.13-brightgreen.svg)
 [![py314](https://img.shields.io/badge/python-3.14-brightgreen.svg)](https://img.shields.io/badge/python-3.14-brightgreen.svg)
-[![cu128](https://img.shields.io/badge/cuda-11.8-blue.svg)](https://img.shields.io/badge/cuda-12.8-blue.svg)
-[![cu130](https://img.shields.io/badge/cuda-12.8-blue.svg)](https://img.shields.io/badge/cuda-13.0-blue.svg)
+[![cu128](https://img.shields.io/badge/cuda-12.8-blue.svg)](https://img.shields.io/badge/cuda-12.8-blue.svg)
+[![cu130](https://img.shields.io/badge/cuda-13.0.8-blue.svg)](https://img.shields.io/badge/cuda-13.0-blue.svg)
 
 Bonito is an open source research basecaller for Oxford Nanopore reads.
 
